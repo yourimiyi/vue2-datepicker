@@ -1,50 +1,62 @@
 <template>
-  <div class="mx-datepicker"
-       :style="{'width': width + 'px','min-width':range ? (type === 'datetime' ? '320px' : '210px') : '140px'}"
-       v-clickoutside="closePopup">
-    <input readonly
-          :class="inputClass"
-          :value="text"
-          :placeholder="innerPlaceholder"
-          ref="input"
-          @click="togglePopup"
-          @mousedown="$event.preventDefault()">
-    <i class="mx-input-icon" 
-      :class="showCloseIcon ? 'mx-input-icon__close' : 'mx-input-icon__calendar'" 
-      @mouseenter="hoverIcon"
-      @mouseleave="hoverIcon"
-      @click="clickIcon" ></i>
-    <div class="mx-datepicker-popup"
-         :class="{'range':range}"
-         :style="position"
-         ref="calendar"
-         v-show="showPopup">
-
-      <calendar-panel 
-        v-if="!range"
-        v-model="currentValue"
+<div class="mx-datepicker"
+  :class="{'disabled': disabled}"
+  :style="{'width': width + 'px','min-width':range ? (type === 'datetime' ? '320px' : '210px') : '140px'}"
+  v-clickoutside="closePopup">
+  <input name="date"
+    :disabled="disabled"
+    :class="inputClass"
+    :value="text"
+    :readonly="!editable || range"
+    :placeholder="innerPlaceholder"
+    ref="input"
+    @mouseenter="hoverIcon"
+    @mouseleave="hoverIcon"
+    @click="togglePopup"
+    @input="handleInput"
+    @change="handleChange"
+    @mousedown="$event.preventDefault()">
+  <i class="mx-input-icon"
+    :class="showCloseIcon ? 'mx-input-icon__close' : 'mx-input-icon__calendar'"
+    @mouseenter="hoverIcon"
+    @mouseleave="hoverIcon"
+    @click="clickIcon"></i>
+  <div class="mx-datepicker-popup"
+    :class="{'range':range}"
+    :style="position"
+    ref="calendar"
+    v-show="showPopup">
+    <calendar-panel v-if="!range"
+      v-model="currentValue"
+      @select="selectDate"
+      :show="showPopup"></calendar-panel>
+    <div v-else
+      style="overflow:hidden">
+      <div class="mx-datepicker-top"
+        v-if="ranges.length">
+        <span v-for="range in ranges"
+          @click="selectRange(range)">{{range.text}}</span>
+      </div>
+      <calendar-panel style="width:50%;box-shadow:1px 0 rgba(0, 0, 0, .1)"
+        v-model="currentValue[0]"
+        :end-at="currentValue[1]"
         @select="selectDate"
         :show="showPopup"></calendar-panel>
-      <div v-else style="overflow:hidden" >
-        <div class="mx-datepicker-top" v-if="ranges.length">
-          <span v-for="range in ranges" @click="selectRange(range)">{{range.text}}</span>
-        </div>
-        <calendar-panel style="width:50%;box-shadow:1px 0 rgba(0, 0, 0, .1)"
-                        v-model="currentValue[0]"
-                        :end-at="currentValue[1]"
-                        @select="selectDate"
-                        :show="showPopup"></calendar-panel>
-        <calendar-panel style="width:50%;"
-                        v-model="currentValue[1]"
-                        :start-at="currentValue[0]"
-                        @select="selectDate"
-                        :show="showPopup"></calendar-panel>
-      </div>
-      <div class="mx-datepicker-footer" v-if="confirm">
-        <button type="button" class="mx-datepicker-btn mx-datepicker-btn-confirm" @click="confirmDate"> {{ confirmText }}</button>
-      </div>
+      <calendar-panel style="width:50%;"
+        v-model="currentValue[1]"
+        :start-at="currentValue[0]"
+        @select="selectDate"
+        :show="showPopup"></calendar-panel>
+    </div>
+    <div class="mx-datepicker-footer"
+      v-if="confirm">
+      <button type="button"
+        class="mx-datepicker-btn mx-datepicker-btn-confirm"
+        @click="confirmDate"> {{ confirmText }}</button>
     </div>
   </div>
+</div>
+
 </template>
 
 <script>
@@ -83,7 +95,7 @@ export default {
     },
     disabledDays: {
       type: Array,
-      default: function() {
+      default: function () {
         return []
       }
     },
@@ -120,20 +132,29 @@ export default {
     confirmText: {
       type: String,
       default: 'OK'
+    },
+    disabled: {
+      type: Boolean,
+      default: false
+    },
+    editable: {
+      type: Boolean,
+      default: false
     }
   },
-  data() {
+  data () {
     return {
       showPopup: false,
       showCloseIcon: false,
       currentValue: this.value,
       position: null,
+      userInput: '',
       ranges: [] // 快捷选项
     }
   },
   watch: {
     value: {
-      handler(val) {
+      handler (val) {
         if (!this.range) {
           this.currentValue = this.isValidDate(val) ? val : undefined
         } else {
@@ -144,17 +165,19 @@ export default {
       },
       immediate: true
     },
-    showPopup(val) {
+    showPopup (val) {
       if (val) {
         this.$nextTick(this.displayPopup)
+      } else {
+        this.userInput = null
       }
     }
   },
   computed: {
-    translation() {
+    translation () {
       return Languages[this.lang] || Languages['en']
     },
-    innerPlaceholder() {
+    innerPlaceholder () {
       return (
         this.placeholder ||
         (this.range
@@ -162,9 +185,9 @@ export default {
           : this.translation.placeholder.date)
       )
     },
-    text() {
+    text () {
       if (!this.range && this.isValidDate(this.value)) {
-        return this.stringify(this.value)
+        return this.userInput !== null ? this.userInput : this.stringify(this.value)
       }
       if (this.range && this.isValidRange(this.value)) {
         return (
@@ -175,29 +198,54 @@ export default {
     }
   },
   methods: {
-    updateDate() {
+    handleInput (event) {
+      this.userInput = event.target.value
+    },
+    handleChange (event) {
+      const value = event.target.value
+      const date = this.parseDate(value, this.format)
+      if (date && this.editable && !this.range) {
+        if (this.notBefore && date < new Date(this.notBefore)) {
+          return
+        }
+        if (this.notAfter && date > new Date(this.notAfter)) {
+          return
+        }
+        for (let i = 0, len = this.disabledDays.length; i < len; i++) {
+          if (date.getTime() === new Date(this.disabledDays[i]).getTime()) {
+            return
+          }
+        }
+        this.$emit('input', date)
+        this.$emit('change', date)
+        this.closePopup()
+      }
+    },
+    updateDate () {
       const val = this.currentValue
       if ((!this.range && val) || (this.range && val[0] && val[1])) {
         this.$emit('input', val)
+        this.$emit('change', val)
+        this.closePopup()
       }
     },
-    confirmDate() {
+    confirmDate () {
       this.updateDate()
       this.closePopup()
       this.$emit('confirm', this.currentValue)
     },
-    selectDate() {
-      if (!this.confirm) {
+    selectDate (show = false) {
+      if (!this.confirm && !this.disabled) {
         this.updateDate()
-        if (this.type === 'date' && !this.range) {
+        if (!show && this.type === 'date' && !this.range) {
           this.closePopup()
         }
       }
     },
-    closePopup() {
+    closePopup () {
       this.showPopup = false
     },
-    togglePopup() {
+    togglePopup () {
       if (this.showPopup) {
         this.$refs.input.blur()
         this.showPopup = false
@@ -206,7 +254,10 @@ export default {
         this.showPopup = true
       }
     },
-    hoverIcon(e) {
+    hoverIcon (e) {
+      if (this.disabled) {
+        return
+      }
       if (e.type === 'mouseenter' && this.text) {
         this.showCloseIcon = true
       }
@@ -214,14 +265,40 @@ export default {
         this.showCloseIcon = false
       }
     },
-    clickIcon() {
+    clickIcon () {
+      if (this.disabled) {
+        return
+      }
       if (this.showCloseIcon) {
         this.$emit('input', '')
+        this.$emit('change', '')
       } else {
         this.togglePopup()
       }
     },
-    formatDate(date, fmt = 'YYYY-MM-dd HH:mm:ss') {
+    parseDate (str, fmt = 'yyyy-MM-dd') {
+      let isValid = true
+      const obj = { y: 0, M: 1, d: 0, H: 0, h: 0, m: 0, s: 0 }
+      fmt.replace(/([^yMdHhms]*?)(([yMdHhms])\3*)([^yMdHhms]*?)/g, function (m, $1, $2, $3, $4, idx, old) {
+        const rgs = new RegExp($1 + '(\\d{' + $2.length + '})' + $4)
+        const index = str.search(rgs)
+        if (index === -1) {
+          isValid = false
+        } else {
+          str = str.replace(rgs, function (_m, _$1) {
+            obj[$3] = parseInt(_$1);
+            return ''
+          });
+        }
+        return ''
+      });
+      if (!isValid) {
+        return false
+      }
+      obj.M--
+      return new Date(obj.y, obj.M, obj.d, obj.H || obj.h, obj.m, obj.s)
+    },
+    formatDate (date, fmt = 'yyyy-MM-dd HH:mm:ss') {
       const hour = date.getHours()
       const map = {
         'M+': date.getMonth() + 1, // 月份
@@ -246,13 +323,13 @@ export default {
       })
       return str
     },
-    stringify(date) {
+    stringify (date) {
       return this.formatDate(new Date(date), this.format)
     },
-    isValidDate(date) {
+    isValidDate (date) {
       return !!new Date(date).getTime()
     },
-    isValidRange(date) {
+    isValidRange (date) {
       return (
         Array.isArray(date) &&
         date.length === 2 &&
@@ -260,10 +337,11 @@ export default {
         this.isValidDate(date[1])
       )
     },
-    selectRange(range) {
+    selectRange (range) {
       this.$emit('input', [range.start, range.end])
+      this.$emit('change', [range.start, range.end])
     },
-    initRanges() {
+    initRanges () {
       if (Array.isArray(this.shortcuts)) {
         this.ranges = this.shortcuts
       } else if (this.shortcuts) {
@@ -296,7 +374,10 @@ export default {
         this.ranges = []
       }
     },
-    displayPopup() {
+    displayPopup () {
+      if (this.disabled) {
+        return
+      }
       const dw = document.documentElement.clientWidth
       const dh = document.documentElement.clientHeight
       const InputRect = this.$el.getBoundingClientRect()
@@ -324,12 +405,12 @@ export default {
       }
     }
   },
-  created() {
+  created () {
     this.initRanges()
   },
   directives: {
     clickoutside: {
-      bind(el, binding, vnode) {
+      bind (el, binding, vnode) {
         el['@clickoutside'] = e => {
           if (
             !el.contains(e.target) &&
@@ -341,7 +422,7 @@ export default {
         }
         document.addEventListener('click', el['@clickoutside'], true)
       },
-      unbind(el) {
+      unbind (el) {
         document.removeEventListener('click', el['@clickoutside'], true)
       }
     }
@@ -359,6 +440,10 @@ export default {
     sans-serif;
   * {
     box-sizing: border-box;
+  }
+  &.disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
   }
 }
 .mx-datepicker-popup {
@@ -387,6 +472,14 @@ export default {
   border: 1px solid #ccc;
   border-radius: 4px;
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
+  &:disabled,
+  &.disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  &:focus {
+    outline: none;
+  }
 }
 
 .mx-input-icon {
