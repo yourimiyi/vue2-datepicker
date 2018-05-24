@@ -97,5 +97,14 @@ export default {
       'date': 'Izberite datum',
       'dateRange': 'Izberite razpon med 2 datumoma'
     }
+  },
+  'ko': {
+    'days': ['일', '월', '화', '수', '목', '금', '토'],
+    'months': ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'],
+    'pickers': ['7일 후', '30일 후', '7일 전', '30일 전'],
+    'placeholder': {
+      'date': '날짜 선택',
+      'dateRange': '기간 선택'
+    }
   }
 }
